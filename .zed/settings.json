@@ -1,0 +1,15 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "cargo": {
+          "allTargets": false
+        },
+        // Use `-p` instead of `--workspace` for cargo check
+        "check": {
+          "workspace": false
+        }
+      }
+    }
+  }
+}
