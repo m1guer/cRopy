@@ -1,49 +1,74 @@
 'use client'
-import { invoke } from '@tauri-apps/api'
-import { type UnlistenFn, listen } from "@tauri-apps/api/event"
-import { isWindows } from "@tauri-apps/api/helpers/os-check";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import {
+  listenToMonitorStatusUpdate,
+  onClipboardUpdate,
+  onFilesUpdate,
+  onImageUpdate,
+  onSomethingUpdate,
+  onTextUpdate,
+  startListening,
+} from "tauri-plugin-clipboard-api";
+import { invoke } from "@tauri-apps/api/tauri";
 
-interface Event {
-  payload: string
-}
 const CopyHistory: React.FC = () => {
-  const [currentClipboard, setCurrentClipboard] = useState<string[]>([])
-
-  async function clipboardList() {
-    try {
-      if (window.__TAURI__) {
-        await invoke('listen_clipboard', { delayMilis: 100 });
-
-      }
-    } catch (error) {
-      console.error('Error initializing clipboard listener:', error);
-    }
-  }
-
+  const [copiedText, setCopiedText] = useState("");
+  let unlistenTextUpdate: UnlistenFn;
+  let unlistenImageUpdate: UnlistenFn;
+  let unlistenClipboard: () => Promise<void>;
+  let unlistenFiles: UnlistenFn;
+  let monitorRunning = false;
   useEffect(() => {
-    clipboardList()
-  }, [])
-  async function list() {
+    console.log("on mount");
+    const unlistenFunctions = async () => {
+      unlistenTextUpdate = await onTextUpdate((newText) => {
+        console.log(newText);
+        setCopiedText(newText);
+      });
+      unlistenImageUpdate = await onImageUpdate((_) => {
+        console.log("Image updated");
+      });
+      unlistenFiles = await onFilesUpdate((_) => {
+        console.log("Files updated");
+      });
+      unlistenClipboard = await startListening();
 
-    await listen('clipboard-update', (event: Event) => {
-      if (!currentClipboard.includes(event.payload)) {
-        if (!currentClipboard[currentClipboard.length - 1]) {
-          console.log(event.payload)
-          setCurrentClipboard(prevValue => [...prevValue, `${event.payload}`])
-        }
+      onClipboardUpdate(() => {
+        console.log(
+          "plugin:clipboard://clipboard-monitor/update event received"
+        );
+      });
+
+      await listen("plugin:clipboard://something-changed", (e) => { console.log(e) })
+    };
+
+    listenToMonitorStatusUpdate((running) => {
+      monitorRunning = running;
+    });
+    unlistenFunctions().catch(console.error);
+
+    return () => {
+      if (unlistenTextUpdate) {
+        unlistenTextUpdate();
       }
-    })
-  }
-  useEffect(() => {
-    list()
-  }, [listen('clipboard-update')])
+      if (unlistenImageUpdate) {
+        unlistenImageUpdate();
+      }
+      if (unlistenClipboard) {
+        unlistenClipboard();
+      }
+      if (unlistenFiles) {
+        unlistenFiles();
+      }
+      console.log(monitorRunning);
+    };
+  }, []);
   return (
-    <div>{currentClipboard.map((cliped, index) => {
-      return (
-        <div className="text-lg" key={index}>{cliped} {currentClipboard.length}</div>
-      )
-    })}</div>
+    <div>
+      <h1>Try and copy this sentence</h1>
+      <h1>{copiedText}</h1>
+    </div>
   )
 }
 
